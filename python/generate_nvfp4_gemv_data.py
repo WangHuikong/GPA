@@ -107,17 +107,29 @@ def main() -> None:
     fp4_table = fp4_e2m1_table()
     fp8_table = fp8_e4m3_table()
 
-    # Repeat row patterns to make manual comparison easier.
-    a_row_codes = np.tile(np.arange(16, dtype=np.uint8), K // 16)
+    # Repeat fractional row patterns to make manual comparison easier.
+    a_pattern = np.array([0x1, 0x3, 0x9, 0xB], dtype=np.uint8)
+    a_row_codes = np.tile(a_pattern, K // a_pattern.size)
     a_codes = np.tile(a_row_codes, (M, 1))
 
-    b_row_codes = np.tile(np.arange(15, -1, -1, dtype=np.uint8), K // 16)
+    b_pattern = np.array([0xB, 0x9, 0x3, 0x1], dtype=np.uint8)
+    b_row_codes = np.tile(b_pattern, K // b_pattern.size)
     b_codes = b_row_codes.reshape(1, K)
 
-    scale_a_row_codes = np.tile(np.arange(0x20, 0x30, dtype=np.uint8), (K // BLOCK) // 16)
+    scale_a_pattern = np.array(
+        [0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x39], dtype=np.uint8
+    )
+    scale_a_row_codes = np.tile(
+        scale_a_pattern, (K // BLOCK) // scale_a_pattern.size
+    )
     scale_a_codes = np.tile(scale_a_row_codes, (M, 1))
 
-    scale_b_row_codes = np.tile(np.arange(0x18, 0x28, dtype=np.uint8), (K // BLOCK) // 16)
+    scale_b_pattern = np.array(
+        [0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x31], dtype=np.uint8
+    )
+    scale_b_row_codes = np.tile(
+        scale_b_pattern, (K // BLOCK) // scale_b_pattern.size
+    )
     scale_b_codes = scale_b_row_codes.reshape(1, K // BLOCK)
 
     a_dequant = fp4_table[a_codes]
