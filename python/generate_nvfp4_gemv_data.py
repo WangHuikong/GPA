@@ -52,15 +52,6 @@ def fp8_e4m3_table() -> np.ndarray:
     return table
 
 
-def quantize_to_codes(
-    values: np.ndarray, table_values: np.ndarray, table_codes: np.ndarray
-) -> np.ndarray:
-    values = np.asarray(values, dtype=np.float32)
-    diffs = np.abs(values[..., None] - table_values[None, :])
-    nearest = np.argmin(diffs, axis=-1)
-    return table_codes[nearest].astype(np.uint8)
-
-
 def pack_u4_to_u32(values: np.ndarray) -> np.ndarray:
     vals = np.asarray(values, dtype=np.uint8).ravel()
     if vals.size % 8 != 0:
@@ -108,31 +99,26 @@ def main() -> None:
         "--out-dir",
         default=str(Path(__file__).resolve().parent.parent / "data" / "nvfp4_gemv_256x1x1024"),
     )
-    parser.add_argument("--seed", type=int, default=20260126)
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    rng = np.random.default_rng(args.seed)
-    a_float = rng.uniform(-3.0, 3.0, size=(M, K)).astype(np.float32)
-    b_float = rng.uniform(-3.0, 3.0, size=(N, K)).astype(np.float32)
-    scale_a_float = rng.uniform(0.25, 2.0, size=(M, K // BLOCK)).astype(np.float32)
-    scale_b_float = rng.uniform(0.25, 2.0, size=(N, K // BLOCK)).astype(np.float32)
-
     fp4_table = fp4_e2m1_table()
-    fp4_codes = np.arange(16, dtype=np.uint8)
-    a_codes = quantize_to_codes(a_float, fp4_table, fp4_codes)
-    b_codes = quantize_to_codes(b_float, fp4_table, fp4_codes)
-
     fp8_table = fp8_e4m3_table()
-    fp8_codes_all = np.arange(256, dtype=np.uint16)
-    fp8_valid = np.isfinite(fp8_table)
-    fp8_values = fp8_table[fp8_valid]
-    fp8_codes = fp8_codes_all[fp8_valid].astype(np.uint8)
 
-    scale_a_codes = quantize_to_codes(scale_a_float, fp8_values, fp8_codes)
-    scale_b_codes = quantize_to_codes(scale_b_float, fp8_values, fp8_codes)
+    # Repeat row patterns to make manual comparison easier.
+    a_row_codes = np.tile(np.arange(16, dtype=np.uint8), K // 16)
+    a_codes = np.tile(a_row_codes, (M, 1))
+
+    b_row_codes = np.tile(np.arange(15, -1, -1, dtype=np.uint8), K // 16)
+    b_codes = b_row_codes.reshape(1, K)
+
+    scale_a_row_codes = np.tile(np.arange(0x20, 0x30, dtype=np.uint8), (K // BLOCK) // 16)
+    scale_a_codes = np.tile(scale_a_row_codes, (M, 1))
+
+    scale_b_row_codes = np.tile(np.arange(0x18, 0x28, dtype=np.uint8), (K // BLOCK) // 16)
+    scale_b_codes = scale_b_row_codes.reshape(1, K // BLOCK)
 
     a_dequant = fp4_table[a_codes]
     b_dequant = fp4_table[b_codes]
