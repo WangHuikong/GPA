@@ -13,6 +13,18 @@ git clone --recursive https://github.com/Jokeren/GPA.git && cd GPA
 ./bin/bench.sh rodinia/bfs
 ```
 
+## Examples
+
+### FP8 GEMV (CUDA)
+
+This example shows a simple FP8 (E4M3) GEMV with software FP8 encode/decode
+and per-tensor scaling.
+
+```bash
+nvcc -O2 -std=c++14 examples/fp8_gemv.cu -o fp8_gemv
+./fp8_gemv 256 256
+```
+
 ## Documentation
 
 - [Installation Guide](https://github.com/Jokeren/GPA/blob/master/INSTALL.md)
