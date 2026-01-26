@@ -108,11 +108,12 @@ def main() -> None:
     fp8_table = fp8_e4m3_table()
 
     # Repeat fractional row patterns to make manual comparison easier.
-    a_pattern = np.array([0x1, 0x3, 0x9, 0xB], dtype=np.uint8)
+    # UE2M1 uses only non-negative codes (sign bit = 0).
+    a_pattern = np.array([0x1, 0x3, 0x1, 0x3], dtype=np.uint8)
     a_row_codes = np.tile(a_pattern, K // a_pattern.size)
     a_codes = np.tile(a_row_codes, (M, 1))
 
-    b_pattern = np.array([0xB, 0x9, 0x3, 0x1], dtype=np.uint8)
+    b_pattern = np.array([0x3, 0x1, 0x3, 0x1], dtype=np.uint8)
     b_row_codes = np.tile(b_pattern, K // b_pattern.size)
     b_codes = b_row_codes.reshape(1, K)
 
