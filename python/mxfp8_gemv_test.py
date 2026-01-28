@@ -84,12 +84,14 @@ def mxfp8_gemv(a_u8, scale_a_u8, b_u8, scale_b_u8, group_size):
         end = start + group_size
 
         a_vals = fp8_e4m3_to_f32(a_u8[start:end])
-        a_vals *= fp8_e8m0_to_f32(scale_a_u8[group])
-
         b_vals = fp8_e4m3_to_f32(b_u8[start:end, :])
-        b_vals *= fp8_e8m0_to_f32(scale_b_u8[group])[None, :]
+        scale_a = fp8_e8m0_to_f32(scale_a_u8[group])
+        scale_b = fp8_e8m0_to_f32(scale_b_u8[group])[None, :]
 
-        out += a_vals.astype(np.float32) @ b_vals.astype(np.float32)
+        with np.errstate(over="ignore", invalid="ignore"):
+            a_vals *= scale_a
+            b_vals *= scale_b
+            out += a_vals.astype(np.float32) @ b_vals.astype(np.float32)
 
     return out
 
