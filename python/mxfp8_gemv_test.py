@@ -6,26 +6,6 @@ E4M3_BIAS = 7
 E8M0_BIAS = 127
 
 
-def load_hex_u32(path, expected_count=None):
-    def line_iter():
-        with open(path, "r", encoding="utf-8") as handle:
-            for line in handle:
-                text = line.strip()
-                if not text or text.startswith("#"):
-                    continue
-                if text.startswith(("0x", "0X")):
-                    text = text[2:]
-                yield int(text, 16)
-
-    count = expected_count if expected_count is not None else -1
-    data = np.fromiter(line_iter(), dtype=np.uint32, count=count)
-    if expected_count is not None and data.size != expected_count:
-        raise ValueError(
-            f"{path} has {data.size} entries, expected {expected_count}"
-        )
-    return data
-
-
 def write_hex_u32(path, data_u32):
     with open(path, "w", encoding="utf-8") as handle:
         for value in data_u32:
@@ -80,6 +60,17 @@ def fp8_e8m0_to_f32(values_u8):
     return out
 
 
+def generate_e4m3(rng, shape):
+    sign = rng.integers(0, 2, size=shape, dtype=np.uint8)
+    exp = rng.integers(0, 0xF, size=shape, dtype=np.uint8)
+    mant = rng.integers(0, 8, size=shape, dtype=np.uint8)
+    return (sign << 7) | (exp << 3) | mant
+
+
+def generate_e8m0(rng, shape):
+    return rng.integers(1, 0xFF, size=shape, dtype=np.uint8)
+
+
 def mxfp8_gemv(a_u8, scale_a_u8, b_u8, scale_b_u8, group_size):
     k = a_u8.size
     if k % group_size != 0:
@@ -106,19 +97,32 @@ def mxfp8_gemv(a_u8, scale_a_u8, b_u8, scale_b_u8, group_size):
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Compute MXFP8 GEMV output from hex text inputs. "
-            "Each line stores one 32-bit hex value."
+            "Generate MXFP8 inputs, write hex files, then compute GEMV output. "
+            "Each line stores one 32-bit hex value. Input files are overwritten."
         )
     )
-    parser.add_argument("--a", required=True, help="A input hex file")
-    parser.add_argument("--scale-a", required=True, help="Scale A hex file")
-    parser.add_argument("--b", required=True, help="B input hex file")
-    parser.add_argument("--scale-b", required=True, help="Scale B hex file")
+    parser.add_argument("--a", required=True, help="A input hex file (overwrite)")
+    parser.add_argument(
+        "--scale-a", required=True, help="Scale A hex file (overwrite)"
+    )
+    parser.add_argument("--b", required=True, help="B input hex file (overwrite)")
+    parser.add_argument(
+        "--scale-b", required=True, help="Scale B hex file (overwrite)"
+    )
     parser.add_argument("--out", required=True, help="Output hex file")
     parser.add_argument("--k", type=int, default=4096, help="K dimension")
     parser.add_argument("--n", type=int, default=4096, help="N dimension")
     parser.add_argument(
         "--group-size", type=int, default=32, help="Group size for scaling"
+    )
+    parser.add_argument(
+        "--init",
+        choices=["random", "zeros"],
+        default="random",
+        help="Initialize inputs with random values or zeros",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=0, help="Random seed for input generation"
     )
     return parser.parse_args()
 
@@ -129,15 +133,22 @@ def main():
         raise ValueError("K must be a multiple of group-size")
     groups = args.k // args.group_size
 
-    a_u32 = load_hex_u32(args.a, expected_count=args.k)
-    scale_a_u32 = load_hex_u32(args.scale_a, expected_count=groups)
-    b_u32 = load_hex_u32(args.b, expected_count=args.k * args.n)
-    scale_b_u32 = load_hex_u32(args.scale_b, expected_count=groups * args.n)
+    if args.init == "zeros":
+        a_u8 = np.zeros((args.k,), dtype=np.uint8)
+        scale_a_u8 = np.zeros((groups,), dtype=np.uint8)
+        b_u8 = np.zeros((args.k, args.n), dtype=np.uint8)
+        scale_b_u8 = np.zeros((groups, args.n), dtype=np.uint8)
+    else:
+        rng = np.random.default_rng(args.seed)
+        a_u8 = generate_e4m3(rng, (args.k,))
+        scale_a_u8 = generate_e8m0(rng, (groups,))
+        b_u8 = generate_e4m3(rng, (args.k, args.n))
+        scale_b_u8 = generate_e8m0(rng, (groups, args.n))
 
-    a_u8 = a_u32.astype(np.uint8)
-    scale_a_u8 = scale_a_u32.astype(np.uint8)
-    b_u8 = b_u32.astype(np.uint8).reshape(args.k, args.n)
-    scale_b_u8 = scale_b_u32.astype(np.uint8).reshape(groups, args.n)
+    write_hex_u32(args.a, a_u8.astype(np.uint32))
+    write_hex_u32(args.scale_a, scale_a_u8.astype(np.uint32))
+    write_hex_u32(args.b, b_u8.astype(np.uint32).ravel())
+    write_hex_u32(args.scale_b, scale_b_u8.astype(np.uint32).ravel())
 
     out = mxfp8_gemv(a_u8, scale_a_u8, b_u8, scale_b_u8, args.group_size)
     out_u32 = np.ascontiguousarray(out.astype(np.float32)).view(np.uint32)
