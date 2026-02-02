@@ -17,6 +17,20 @@ def write_hex_f32(path, data_f32):
     write_hex_u32(path, data_u32)
 
 
+def write_hex_u8_packed4(path, data_u8):
+    data_u8 = np.asarray(data_u8, dtype=np.uint8).ravel()
+    if data_u8.size % 4 != 0:
+        raise ValueError("Packed fp8 output requires length multiple of 4")
+    packed = data_u8.reshape(-1, 4).astype(np.uint32)
+    packed = (
+        packed[:, 0]
+        | (packed[:, 1] << 8)
+        | (packed[:, 2] << 16)
+        | (packed[:, 3] << 24)
+    )
+    write_hex_u32(path, packed)
+
+
 def fp8_e4m3_to_f32(values_u8):
     values_u8 = np.asarray(values_u8, dtype=np.uint8)
     sign = (values_u8 >> 7) & 0x1
@@ -217,7 +231,9 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Generate MXFP8 GEMV inputs, write hex files, then compute output. "
-            "Each line stores one 32-bit hex value. Input files are overwritten."
+            "Each line stores one 32-bit hex value. Input files are overwritten. "
+            "For fp8 encoding, four 8-bit values are packed per line "
+            "(little-endian: first value in lowest byte)."
         )
     )
     parser.add_argument("--a", required=True, help="A input hex file (overwrite)")
@@ -307,10 +323,10 @@ def main():
         scale_b_u8 = generate_e8m0(rng, (groups, args.n))
         desired = None
 
-    write_hex_u32(args.a, a_u8.astype(np.uint32))
-    write_hex_u32(args.scale_a, scale_a_u8.astype(np.uint32))
-    write_hex_u32(args.b, b_u8.astype(np.uint32).ravel())
-    write_hex_u32(args.scale_b, scale_b_u8.astype(np.uint32).ravel())
+    write_hex_u8_packed4(args.a, a_u8)
+    write_hex_u8_packed4(args.scale_a, scale_a_u8)
+    write_hex_u8_packed4(args.b, b_u8.ravel())
+    write_hex_u8_packed4(args.scale_b, scale_b_u8.ravel())
 
     if args.strict and args.pattern == "ones_ramp":
         b_f32 = fp8_e4m3_to_f32(b_u8)
