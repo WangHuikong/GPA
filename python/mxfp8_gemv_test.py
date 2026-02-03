@@ -174,6 +174,15 @@ def generate_ones_ramp_fp8(k, n, group_size):
     return a_u8, scale_a_u8, b_u8, scale_b_u8, desired
 
 
+def generate_ones_1p5_fp8(k, n, group_size):
+    groups = k // group_size
+    a_u8 = np.full((k,), 0x38, dtype=np.uint8)
+    scale_a_u8 = np.full((groups,), 0x7F, dtype=np.uint8)
+    b_u8 = np.full((k, n), 0x3C, dtype=np.uint8)
+    scale_b_u8 = np.full((groups, n), 0x7F, dtype=np.uint8)
+    return a_u8, scale_a_u8, b_u8, scale_b_u8
+
+
 def generate_ones_ramp_f32(k, n, group_size):
     groups = k // group_size
     a = np.ones((k,), dtype=np.float32)
@@ -181,6 +190,15 @@ def generate_ones_ramp_f32(k, n, group_size):
     b = np.arange(1, k * n + 1, dtype=np.float32).reshape(k, n)
     scale_b = np.ones((groups, n), dtype=np.float32)
     return a, scale_a, b, scale_b, b
+
+
+def generate_ones_1p5_f32(k, n, group_size):
+    groups = k // group_size
+    a = np.ones((k,), dtype=np.float32)
+    scale_a = np.ones((groups,), dtype=np.float32)
+    b = np.full((k, n), 1.5, dtype=np.float32)
+    scale_b = np.ones((groups, n), dtype=np.float32)
+    return a, scale_a, b, scale_b
 
 
 def mxfp8_gemv(a_u8, scale_a_u8, b_u8, scale_b_u8, group_size):
@@ -252,8 +270,8 @@ def parse_args():
     )
     parser.add_argument(
         "--pattern",
-        choices=["ones_ramp", "random", "zeros"],
-        default="ones_ramp",
+        choices=["ones_1p5", "ones_ramp", "random", "zeros"],
+        default="ones_1p5",
         help="Input pattern for generated data",
     )
     parser.add_argument(
@@ -280,7 +298,11 @@ def main():
     groups = args.k // args.group_size
 
     if args.encoding == "f32":
-        if args.pattern == "ones_ramp":
+        if args.pattern == "ones_1p5":
+            a_f32, scale_a_f32, b_f32, scale_b_f32 = generate_ones_1p5_f32(
+                args.k, args.n, args.group_size
+            )
+        elif args.pattern == "ones_ramp":
             a_f32, scale_a_f32, b_f32, scale_b_f32, _ = generate_ones_ramp_f32(
                 args.k, args.n, args.group_size
             )
@@ -305,7 +327,12 @@ def main():
         write_hex_f32(args.out, out.astype(np.float32))
         return
 
-    if args.pattern == "ones_ramp":
+    if args.pattern == "ones_1p5":
+        a_u8, scale_a_u8, b_u8, scale_b_u8 = generate_ones_1p5_fp8(
+            args.k, args.n, args.group_size
+        )
+        desired = None
+    elif args.pattern == "ones_ramp":
         a_u8, scale_a_u8, b_u8, scale_b_u8, desired = generate_ones_ramp_fp8(
             args.k, args.n, args.group_size
         )
