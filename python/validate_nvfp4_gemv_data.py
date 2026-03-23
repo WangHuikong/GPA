@@ -79,13 +79,22 @@ def unpack_u16(words: np.ndarray) -> np.ndarray:
     return vals
 
 
+def float32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=np.float32)
+    return (values.view(np.uint32) >> 16).astype(np.uint16)
+
+
+def bf16_bits_to_float32(bits: np.ndarray) -> np.ndarray:
+    return (bits.astype(np.uint32) << 16).view(np.float32)
+
+
 def load_inputs(data_dir: Path) -> dict[str, np.ndarray]:
     required = {
         "a_fp4.txt": (M * K) // 8,
         "a_scale_fp8.txt": (M * (K // BLOCK)) // 4,
         "b_fp4.txt": (N * K) // 8,
         "b_scale_fp8.txt": (N * (K // BLOCK)) // 4,
-        "c_fp16.txt": (M * N) // 2,
+        "c_bf16.txt": (M * N) // 2,
     }
     data = {}
     for name, expected_words in required.items():
@@ -128,7 +137,7 @@ def main() -> int:
     b_codes = unpack_u4(inputs["b_fp4.txt"]).reshape(N, K)
     a_scale_codes = unpack_u8(inputs["a_scale_fp8.txt"]).reshape(M, K // BLOCK)
     b_scale_codes = unpack_u8(inputs["b_scale_fp8.txt"]).reshape(N, K // BLOCK)
-    c_ref = unpack_u16(inputs["c_fp16.txt"]).view(np.float16).reshape(M, N)
+    c_ref_bits = unpack_u16(inputs["c_bf16.txt"]).reshape(M, N)
 
     fp4_table = fp4_e2m1_table()
     fp8_table = fp8_e4m3_table()
@@ -145,10 +154,11 @@ def main() -> int:
     a_scaled = (a.reshape(M, K // BLOCK, BLOCK) * a_scale[..., None]).reshape(M, K)
     b_scaled = (b.reshape(N, K // BLOCK, BLOCK) * b_scale[..., None]).reshape(K)
 
-    c_calc = (a_scaled @ b_scaled).astype(np.float16).reshape(M, 1)
+    c_calc = (a_scaled @ b_scaled).astype(np.float32).reshape(M, 1)
+    c_calc_bits = float32_to_bf16_bits(c_calc)
 
-    diff = c_calc.astype(np.float32) - c_ref.astype(np.float32)
-    mismatch_mask = diff != 0
+    diff = bf16_bits_to_float32(c_calc_bits) - bf16_bits_to_float32(c_ref_bits)
+    mismatch_mask = c_calc_bits != c_ref_bits
     mismatch_count = int(np.count_nonzero(mismatch_mask))
     max_abs = float(np.max(np.abs(diff)))
 
@@ -160,7 +170,8 @@ def main() -> int:
         for idx in indices[:8]:
             i, j = int(idx[0]), int(idx[1])
             print(
-                f"[{i},{j}] calc={c_calc[i, j]} ref={c_ref[i, j]} diff={diff[i, j]}"
+                f"[{i},{j}] calc={bf16_bits_to_float32(c_calc_bits)[i, j]} "
+                f"ref={bf16_bits_to_float32(c_ref_bits)[i, j]} diff={diff[i, j]}"
             )
 
     return 0 if mismatch_count == 0 else 1

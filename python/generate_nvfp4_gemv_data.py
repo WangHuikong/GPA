@@ -91,6 +91,11 @@ def write_hex_lines(path: Path, words: np.ndarray) -> None:
             handle.write(f"{int(word):08x}\n")
 
 
+def float32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=np.float32)
+    return (values.view(np.uint32) >> 16).astype(np.uint16)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate NVFP4 GEMV test data (256x1x1024)."
@@ -107,31 +112,12 @@ def main() -> None:
     fp4_table = fp4_e2m1_table()
     fp8_table = fp8_e4m3_table()
 
-    # Repeat fractional row patterns to make manual comparison easier.
-    # UE2M1 uses only non-negative codes (sign bit = 0).
-    a_pattern = np.array([0x1, 0x3, 0x1, 0x3], dtype=np.uint8)
-    a_row_codes = np.tile(a_pattern, K // a_pattern.size)
-    a_codes = np.tile(a_row_codes, (M, 1))
-
-    b_pattern = np.array([0x3, 0x1, 0x3, 0x1], dtype=np.uint8)
-    b_row_codes = np.tile(b_pattern, K // b_pattern.size)
-    b_codes = b_row_codes.reshape(1, K)
-
-    scale_a_pattern = np.array(
-        [0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x39], dtype=np.uint8
-    )
-    scale_a_row_codes = np.tile(
-        scale_a_pattern, (K // BLOCK) // scale_a_pattern.size
-    )
-    scale_a_codes = np.tile(scale_a_row_codes, (M, 1))
-
-    scale_b_pattern = np.array(
-        [0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x31], dtype=np.uint8
-    )
-    scale_b_row_codes = np.tile(
-        scale_b_pattern, (K // BLOCK) // scale_b_pattern.size
-    )
-    scale_b_codes = scale_b_row_codes.reshape(1, K // BLOCK)
+    # UE2M1: A codes=0x1 (0.5), B codes=0x2 (1.0)
+    # UE4M3: scale codes=0x38 (1.0)
+    a_codes = np.full((M, K), 0x1, dtype=np.uint8)
+    b_codes = np.full((N, K), 0x2, dtype=np.uint8)
+    scale_a_codes = np.full((M, K // BLOCK), 0x38, dtype=np.uint8)
+    scale_b_codes = np.full((N, K // BLOCK), 0x38, dtype=np.uint8)
 
     a_dequant = fp4_table[a_codes]
     b_dequant = fp4_table[b_codes]
@@ -143,13 +129,14 @@ def main() -> None:
     a_scaled = a_scaled.reshape(M, K).astype(np.float32)
     b_scaled = b_scaled.reshape(K).astype(np.float32)
 
-    c_fp16 = (a_scaled @ b_scaled).astype(np.float16)
+    c_fp32 = (a_scaled @ b_scaled).astype(np.float32)
+    c_bf16_bits = float32_to_bf16_bits(c_fp32)
 
     write_hex_lines(out_dir / "a_fp4.txt", pack_u4_to_u32(a_codes))
     write_hex_lines(out_dir / "a_scale_fp8.txt", pack_u8_to_u32(scale_a_codes))
     write_hex_lines(out_dir / "b_fp4.txt", pack_u4_to_u32(b_codes))
     write_hex_lines(out_dir / "b_scale_fp8.txt", pack_u8_to_u32(scale_b_codes))
-    write_hex_lines(out_dir / "c_fp16.txt", pack_u16_to_u32(c_fp16.view(np.uint16)))
+    write_hex_lines(out_dir / "c_bf16.txt", pack_u16_to_u32(c_bf16_bits))
 
 
 if __name__ == "__main__":
