@@ -13,7 +13,7 @@ BLOCK = 16
 
 
 def fp4_e2m1_table() -> np.ndarray:
-    """NVFP4-style E2M1 values (bias=1, no inf/NaN)."""
+    """NVFP4 E2M1 values (bias=1, no inf/NaN)."""
     table = np.zeros(16, dtype=np.float32)
     for code in range(16):
         sign = (code >> 3) & 0x1
@@ -30,7 +30,7 @@ def fp4_e2m1_table() -> np.ndarray:
 
 
 def fp8_e4m3_table() -> np.ndarray:
-    """FP8 E4M3 values (bias=7, IEEE-like, exp=0xF reserved)."""
+    """FP8 E4M3 values (bias=7, exp=0xF reserved)."""
     table = np.empty(256, dtype=np.float32)
     table.fill(np.nan)
     for code in range(256):
@@ -112,8 +112,8 @@ def main() -> None:
     fp4_table = fp4_e2m1_table()
     fp8_table = fp8_e4m3_table()
 
-    # UE2M1: use increasing patterns for A and B (row-major).
-    # UE4M3: scale A/B increase by 0.5 steps (different sequences).
+    # NVFP4 E2M1: use increasing patterns for A and B (row-major).
+    # UE4M3: scale A/B increase by 0.5 steps (different sequences, unsigned).
     a_pattern = np.array([0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7], dtype=np.uint8)
     a_row_codes = np.tile(a_pattern, K // a_pattern.size)
     a_codes = np.tile(a_row_codes, (M, 1))
