@@ -113,7 +113,7 @@ def main() -> None:
     fp8_table = fp8_e4m3_table()
 
     # UE2M1: use increasing patterns for A and B (row-major).
-    # UE4M3: scale A=1.0, scale B=2.0 (different scales).
+    # UE4M3: scale A/B increase by 0.5 steps (different sequences).
     a_pattern = np.array([0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7], dtype=np.uint8)
     a_row_codes = np.tile(a_pattern, K // a_pattern.size)
     a_codes = np.tile(a_row_codes, (M, 1))
@@ -122,8 +122,16 @@ def main() -> None:
     b_row_codes = np.tile(b_pattern, K // b_pattern.size)
     b_codes = b_row_codes.reshape(1, K)
 
-    scale_a_codes = np.full((M, K // BLOCK), 0x38, dtype=np.uint8)  # 1.0
-    scale_b_codes = np.full((N, K // BLOCK), 0x40, dtype=np.uint8)  # 2.0
+    scale_a_pattern = np.array(
+        [0x30, 0x38, 0x3C, 0x40, 0x42, 0x44, 0x46, 0x48], dtype=np.uint8
+    )  # 0.5,1.0,1.5,2.0,2.5,3.0,3.5,4.0
+    scale_b_pattern = np.array(
+        [0x38, 0x3C, 0x40, 0x42, 0x44, 0x46, 0x48, 0x49], dtype=np.uint8
+    )  # 1.0,1.5,2.0,2.5,3.0,3.5,4.0,4.5
+    scale_a_row_codes = np.tile(scale_a_pattern, (K // BLOCK) // scale_a_pattern.size)
+    scale_b_row_codes = np.tile(scale_b_pattern, (K // BLOCK) // scale_b_pattern.size)
+    scale_a_codes = np.tile(scale_a_row_codes, (M, 1))
+    scale_b_codes = scale_b_row_codes.reshape(1, K // BLOCK)
 
     a_dequant = fp4_table[a_codes]
     b_dequant = fp4_table[b_codes]
