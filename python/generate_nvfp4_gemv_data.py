@@ -112,13 +112,16 @@ def main() -> None:
     fp4_table = fp4_e2m1_table()
     fp8_table = fp8_e4m3_table()
 
-    # UE2M1: cycle A_scaled values 0.5/1.0/1.5/2.0 using A codes.
+    # UE2M1: use increasing patterns for A and B (row-major).
     # UE4M3: scale A=1.0, scale B=2.0 (different scales).
-    a_pattern = np.array([0x1, 0x2, 0x3, 0x4], dtype=np.uint8)
+    a_pattern = np.array([0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7], dtype=np.uint8)
     a_row_codes = np.tile(a_pattern, K // a_pattern.size)
     a_codes = np.tile(a_row_codes, (M, 1))
 
-    b_codes = np.full((N, K), 0x2, dtype=np.uint8)  # 1.0
+    b_pattern = np.array([0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7], dtype=np.uint8)
+    b_row_codes = np.tile(b_pattern, K // b_pattern.size)
+    b_codes = b_row_codes.reshape(1, K)
+
     scale_a_codes = np.full((M, K // BLOCK), 0x38, dtype=np.uint8)  # 1.0
     scale_b_codes = np.full((N, K // BLOCK), 0x40, dtype=np.uint8)  # 2.0
 
